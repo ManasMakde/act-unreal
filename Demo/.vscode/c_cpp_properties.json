@@ -1,0 +1,33 @@
+{
+    "configurations": [
+        {
+            "name": "ActDemoEditor Editor Linux Development (ActDemo)",
+            "compilerPath": "/home/mrm/Unreal Engine/Source/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v22_clang-16.0.6-centos7/x86_64-unknown-linux-gnu/bin/clang++",
+            "compilerArgs": [
+                "-isysroot",
+                "/home/mrm/Unreal Engine/Source/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v22_clang-16.0.6-centos7/x86_64-unknown-linux-gnu"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "clang-x64",
+            "compileCommands": [
+                "/home/mrm/Desktop/Work/act-unreal/demo/ActDemo/.vscode/compileCommands_ActDemo.json"
+            ]
+        },
+        {
+            "name": "Linux",
+            "compilerPath": "/home/mrm/Unreal Engine/Source/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v22_clang-16.0.6-centos7/x86_64-unknown-linux-gnu/bin/clang++",
+            "compilerArgs": [
+                "-isysroot",
+                "/home/mrm/Unreal Engine/Source/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v22_clang-16.0.6-centos7/x86_64-unknown-linux-gnu"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "clang-x64",
+            "compileCommands": [
+                "/home/mrm/Desktop/Work/act-unreal/demo/ActDemo/.vscode/compileCommands_Default.json"
+            ]
+        }
+    ],
+    "version": 4
+}
