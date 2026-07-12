@@ -2,6 +2,7 @@
 #include "Theater.h"
 
 
+// Public
 void UAct::Init(UTheater* NewTheater, const FString& InName, bool bInitiallyEnabled) {
 
     // Warn if null theater provided
@@ -253,13 +254,10 @@ void UAct::Finish(EActOutcome NewOutcome) {
 }
 void UAct::BlockSelf_Implementation(UAct* ByAct, EActBlockType BlockType) {
 
-    // Return if already blocked or top epilogues match up
-    if (BlockedByActs.Contains(ByAct) || HasMutualTopEpilogue(this, ByAct)) {
-    UE_LOG(LogTemp, Warning, TEXT("%s FAILED TO BLOCK!"), *Name);
+    // Return if already blocked or if both are in the same prologue chain
+    if (BlockedByActs.Contains(ByAct) || InSamePrologueChain(this, ByAct)) {
         return;
     }
-
-    UE_LOG(LogTemp, Warning, TEXT("%s BLOCKED!"), *Name);
 
 
     // Finish interrupted incase ongoing
@@ -315,20 +313,17 @@ void UAct::LinkPrologueArrays(const TArray<UAct*>& ArrayB, const TArray<UAct*>& 
         UAct* ActB = ArrayB[i];
         for (int32 j = 0; j < ArrayA.Num(); j++) {
             UAct* ActA = ArrayA[j];
-            AssignPrologue(ActB, ActA);
+            AssignPrologueEpilogue(ActB, ActA);
         }
     }
 }
-bool UAct::HasMutualTopEpilogue(UAct* ActA, UAct* ActB) {
+bool UAct::InSamePrologueChain(UAct* ActA, UAct* ActB) {
 
     // Incase both are the same acts
     if (ActA == ActB) {
         return false;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Checking ActA Top Epilogue: ActA->EpilogueActs.Num() = %d, ActB->TopEpilogueActs.Contains(ActA) = %s"), 
-        ActA->EpilogueActs.Num(), 
-        ActB->TopEpilogueActs.Contains(ActA) ? TEXT("True") : TEXT("False"));
 
     // Incase act a is a top epilogue
     if (ActA->EpilogueActs.Num() == 0 && ActB->TopEpilogueActs.Contains(ActA)) {
@@ -336,10 +331,6 @@ bool UAct::HasMutualTopEpilogue(UAct* ActA, UAct* ActB) {
     }
 
 
-    UE_LOG(LogTemp, Log, TEXT("Checking ActB Top Epilogue: ActB->EpilogueActs.Num() = %d, ActA->TopEpilogueActs.Contains(ActB) = %s"), 
-        ActB->EpilogueActs.Num(), 
-        ActA->TopEpilogueActs.Contains(ActB) ? TEXT("True") : TEXT("False"));
-    
     // Incase act b is a top epilogue
     if (ActB->EpilogueActs.Num() == 0 && ActA->TopEpilogueActs.Contains(ActB)) {
         return true;
@@ -388,7 +379,7 @@ void UAct::ClearPrologueChain(UAct* OfAct) {
     OfAct->TopEpilogueActs.Empty();
     OfAct->PrologueActs.Empty();
 }
-void UAct::AssignPrologue(UAct* EAct, UAct* PAct) {
+void UAct::AssignPrologueEpilogue(UAct* EAct, UAct* PAct) {
 
     // Assign prologue
     EAct->PrologueActs.Add(PAct);
@@ -396,14 +387,35 @@ void UAct::AssignPrologue(UAct* EAct, UAct* PAct) {
 
     // Assign epilogue
     PAct->EpilogueActs.Add(EAct);
+}
+void UAct::AssignTopEpilogues(UAct* EAct, TSet<UAct*> TopEpilogues) {
 
-
-    // Assign top epilogue
-    if (EAct->EpilogueActs.Num() == 0) {
-        PAct->TopEpilogueActs.Add(EAct);
+    // Get top epilogues to pass on
+    if (TopEpilogues.Num() == 0) {
+        if (EAct->EpilogueActs.Num() == 0) {
+            TopEpilogues.Add(EAct);
+        }
+        else {
+            TopEpilogues = EAct->TopEpilogueActs;
+        }
     }
-    else {
-        PAct->TopEpilogueActs.Append(EAct->TopEpilogueActs);
+
+
+    // Recurse into prologues
+    for (UAct* PAct : EAct->PrologueActs) {
+
+        // Skip null
+        if (PAct == nullptr) {
+            continue;
+        }
+
+
+        // Assign top epilogues
+        PAct->TopEpilogueActs.Append(TopEpilogues);
+
+
+        // Recurse further down chain
+        AssignTopEpilogues(PAct, TopEpilogues);
     }
 }
 bool UAct::CanPerformImpl() {
@@ -464,12 +476,9 @@ void UAct::PrologueImpl() {
     UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
 
 
-    // Get all prologues
+	// Assign all prologues & epilogues
     TArray<UAct*> AllPrologues = PrologueBP.IsBound() ? PrologueBP.Execute(this) : TArray<UAct*>();
     AllPrologues.Append(Prologue(this));
-
-
-    // Assign all prologues and epilogues
     for (UAct* PAct : AllPrologues) {
 
         // Skip self
@@ -483,9 +492,13 @@ void UAct::PrologueImpl() {
             return;
         }
 
-        // Assign prologue epilogue and top epilogue
-        AssignPrologue(this, PAct);
+        // Assign prologue & epilogue
+        AssignPrologueEpilogue(this, PAct);
     }
+
+
+    // Assign all top epilogues
+    AssignTopEpilogues(this);
 
 
     // Block

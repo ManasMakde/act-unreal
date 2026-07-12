@@ -6,7 +6,7 @@
 
 
 // Macros
-#define UE_STATUS_SAFEGUARD(CURRENT_VALUE, CHECK_VALUE)  if (CURRENT_VALUE != CHECK_VALUE) { return; }
+#define UE_STATUS_SAFEGUARD(CURRENT_VALUE, CHECK_VALUE) if (CURRENT_VALUE != CHECK_VALUE) { return; }
 
 
 
@@ -320,11 +320,12 @@ class ACTDEMO_API UAct : public UObject {
 
     // Private Methods
     static void LinkPrologueArrays(const TArray<UAct*>& ArrayB, const TArray<UAct*>& ArrayA);
-    static bool HasMutualTopEpilogue(UAct* ActA, UAct* ActB);
+    static bool InSamePrologueChain(UAct* ActA, UAct* ActB);
     static void FinishEpilogues(UAct* OfAct, EActOutcome NewOutcome);
     static void FinishPrologues(UAct* OfAct, EActOutcome NewOutcome);
     static void ClearPrologueChain(UAct* OfAct);
-    static void AssignPrologue(UAct* EAct, UAct* PAct);
+    static void AssignPrologueEpilogue(UAct* EAct, UAct* PAct);
+    static void AssignTopEpilogues(UAct* EAct, TSet<UAct*> TopEpilogues = TSet<UAct*>());
     bool CanPerformImpl();
     void PerformImpl();
     void PrologueImpl();
