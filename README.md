@@ -26,10 +26,10 @@ If you want to use the act pattern in your project install the desired version f
 > _Feel free to leave a ⭐ if you use this in your project!_  
 
 
-
 ## 🧭 Usage  
 Look into the README of the [main repo][MainRepo] for the principle.  
-Look into the [documentation](/DOCS.md) for an exhaustive explaination.
+Look into the [documentation](/DOCS.md) for an exhaustive explaination.  
+> **Note:** Compatible with Blueprints as well
 
 
 ## 🤝 Contribution
