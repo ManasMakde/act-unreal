@@ -1,27 +1,65 @@
+// v0.1.1-alpha
+//
+// Copyright (c) 2025-present Manas Ravindra Makde
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+
 #include "Act.h"
 #include "Theater.h"
+#include "Misc/App.h"
 
 
-// Public
-void UAct::Init(UTheater* NewTheater, const FString& InName, bool bInitiallyEnabled) {
+void UAct::Init(FString NewName, class UTheater* NewTheater, bool bInitiallyEnabled) {
 
-    // Warn if null theater provided
-    if (NewTheater == nullptr) {
-        UE_LOG(LogTemp, Warning, TEXT("%s Null theater provided for initialization"), *InName);
+    // Return if trying to reinitialize
+    if (bHasInitialized) {
+        WriteLog("Failed Init(), Already initialized!");
         return;
     }
 
 
-    // Assign new owning theater
-    Theater = NewTheater;
-    Theater->AddAct(this);
+    // Return if already initialized
+    if (bIsInitializing) {
+        WriteLog("Failed Init(), Already initializing or deinitializing!");
+        return;
+    }
+
+
+    // Mark as initialization started
+    bIsInitializing = true;
 
 
     // Assign new name
-    Name = InName;
+    if (NewName != "") {
+        Name = NewName;
+    }
 
 
-    // Disable initially
+    // Assign new owning theater
+    if (IsValid(NewTheater)) {
+        Theater = NewTheater;
+        Theater->AddAct(this);
+    }
+
+
+    // Disable Initially
     if (!bInitiallyEnabled) {
         BlockSelf(this, EActBlockType::Persistent);
     }
@@ -36,11 +74,34 @@ void UAct::Init(UTheater* NewTheater, const FString& InName, bool bInitiallyEnab
     Setup();
 
 
+    // Mark as initialization completed
+    bIsInitializing = false;  // Intentionally before post setup broadcast DO NOT CHANGE
+    bHasInitialized = true;
+
+
     // Broadcast post setup
     OnPostSetupBP.Broadcast(this);
     OnPostSetup.Broadcast(this);
 }
 void UAct::Deinit() {
+
+    // Return if trying to redeinitialize
+    if (!bHasInitialized) {
+        WriteLog("Failed Deinit(), Already deinitialized!");
+        return;
+    }
+
+
+    // Return if not initialized
+    if (bIsInitializing) {
+        WriteLog("Failed Deinit(), Already initializing or deinitializing!");
+        return;
+    }
+
+
+    // Mark as deinitialization started
+    bIsInitializing = true;
+
 
     // Make sure act is not ongoing
     Abort();
@@ -63,12 +124,18 @@ void UAct::Deinit() {
     // Unassign owning theater
     if (IsValid(Theater)) {
         Theater->RemoveAct(this);
+        Theater = nullptr;
     }
-    Theater = nullptr;
 
 
     // Reset performed on ticks
+    PerformCount = 0;
     PerformedOnTick = -1;
+
+
+    // Mark as deinitialization completed
+    bIsInitializing = false;
+    bHasInitialized = false;
 }
 void UAct::Perform() {
     if (CanPerformImpl()) {
@@ -76,40 +143,69 @@ void UAct::Perform() {
     }
 }
 void UAct::PerformDeferred(EActTickFlags TickFlag) {
-    if (IsValid(Theater)) {
-        Theater->StageDeferred(this, TickFlag);
+
+    // Warn if null theater provided
+    if (!IsValid(Theater)) {
+        WriteLog("Cannot perform deferred, Assign a theater first!");
+        return;
     }
+
+    Theater->StageDeferred(this, TickFlag);
 }
 void UAct::Retry() {
+
     if (IsOngoing()) {
-        Finish(EActOutcome::Retry);
+        Redirect(EActStatus::Exiting, EActOutcome::Retry);
     }
     else {
         Perform();
     }
 }
 void UAct::Abort() {
-    Finish(EActOutcome::Interrupted);
+
+    Redirect(EActStatus::Exiting, EActOutcome::Interrupted);
+
+
+    // Clear deferred
+    if (Theater != nullptr) {
+        Theater->UnstageDeferred(this);
+        return;
+    }
 }
-void UAct::AddToBlock(const TArray<UAct*>& Acts, EActBlockType BlockType) {
+void UAct::AddToBlock(TArray<UAct*> Acts, EActBlockType BlockType) {
+
     for (UAct* BAct : Acts) {
-        // Skip if self reserved for enable disable
+
+        // Skip if self (reserved for enable/disable)
         if (BAct == this) {
-            UE_LOG(LogTemp, Warning, TEXT("%s Trying to block self"), *Name);
+            WriteLog("Trying to block self!");
             continue;
         }
 
 
         // Add to block list
         ActsToBlock.Add(BAct, BlockType);
+
+
+        // Block if ongoing
+        if (IsOngoing()) {
+            BAct->BlockSelf(this, BlockType);
+        }
     }
 }
-void UAct::RemoveFromBlock(const TArray<UAct*>& Acts) {
+void UAct::RemoveFromBlock(TArray<UAct*> Acts) {
+
     for (UAct* BAct : Acts) {
-        // Skip if self
+
+        // Skip if self (reserved for enable/disable)
         if (BAct == this) {
+            WriteLog("Trying to unblock self!");
             continue;
         }
+
+
+        // Unblock if ongoing
+        BAct->UnblockSelf(this);
 
 
         // Remove from block list
@@ -137,7 +233,7 @@ void UAct::SetEnabled(bool bNewEnabled) {
     OnEnableChangedBP.Broadcast(this, IsEnabled());
     OnEnableChanged.Broadcast(this, IsEnabled());
 }
-bool UAct::DidPerform(EActTickFlags TickFlag) {
+bool UAct::DidPerform(EActTickFlags TickFlag) const {
 
     // Return false if no flag provided
     if (TickFlag == EActTickFlags::None) {
@@ -146,23 +242,24 @@ bool UAct::DidPerform(EActTickFlags TickFlag) {
 
 
     // Check based on tick types
-    bool bPerformed = false;
+    bool bHasPerformed = false;
     if (EnumHasAnyFlags(TickFlag, EActTickFlags::Tick)) {
-        bPerformed = bPerformed || PerformedOnTick == static_cast<int64>(GFrameCounter);
+        bHasPerformed = bHasPerformed || PerformedOnTick == static_cast<int64>(GFrameCounter);
     }
 
-    return bPerformed;
-}
-bool UAct::DidPerformEver() const {
-    return PerformedOnTick != -1;
+    return bHasPerformed;
 }
 bool UAct::IsOngoing() const {
     return Status != EActStatus::None;
+}
+bool UAct::IsActive() const {
+    return Status != EActStatus::None && Status != EActStatus::Prologuing;
 }
 bool UAct::IsEnabled() const {
     return !BlockedByActs.Contains(this);
 }
 bool UAct::IsBlocked() const {
+
     // Incase act is disabled
     if (BlockedByActs.Num() == 1 && BlockedByActs.Contains(this)) {
         return false;
@@ -170,45 +267,64 @@ bool UAct::IsBlocked() const {
 
     return BlockedByActs.Num() != 0;
 }
-bool UAct::DidEnter() const {
-    return bDidEnter;
-}
 bool UAct::CanTick(EActTickFlags Type) const {
     return EnumHasAnyFlags(TickFlags, Type);
+}
+class UTheater* UAct::GetTheater() const {
+    return Theater;
+}
+class AActor* UAct::GetOwner() const {
+    return Theater != nullptr ? Theater->GetOwner() : nullptr;
+}
+TSet<UAct*> UAct::GetBlockedByActs() const {
+    return TSet<UAct*>(BlockedByActs);
+}
+TMap<UAct*, EActBlockType> UAct::GetActsToBlock() const {
+    return TMap<UAct*, EActBlockType>(ActsToBlock);
+}
+EActStatus UAct::GetStatus() const {
+    return Status;
 }
 EActOutcome UAct::GetOutcome() const {
     return Outcome;
 }
-UTheater* UAct::GetTheater() const {
-    return Theater;
+int32 UAct::GetPerformCount() const {
+    return PerformCount;
 }
-AActor* UAct::GetOwner() const {
-    return IsValid(Theater) ? Theater->GetOwner() : nullptr;
+int32 UAct::GetTickCount() const {
+    return TickCount;
 }
 float UAct::GetDelta() const {
-    return IsValid(Theater) ? Theater->GetWorld()->GetDeltaSeconds() : -1;
+    return FApp::GetDeltaTime();
 }
 FString UAct::GetName() const {
     return Name;
 }
 TArray<UAct*> UAct::SeqBP(TArray<FActArray> PArrays) {
 
-    // Convert to plain nested array
-    TArray<TArray<UAct*>> PlainArrays;
-    for (FActArray& PArr : PArrays) {
-        PlainArrays.Add(PArr.Acts);
+    TArray<TArray<UAct*>> RawArrays;
+    for (const FActArray& PArray : PArrays) {
+        RawArrays.Add(PArray.Acts);
     }
 
-    return Seq(PlainArrays);
+    return Seq(RawArrays);
 }
 TArray<UAct*> UAct::Seq(TArray<TArray<UAct*>> PArrays) {
+
+    // Return if any null
+    for (const TArray<UAct*>& PArray : PArrays) {
+        if (PArray.Contains(nullptr)) {
+            return TArray<UAct*>{nullptr};
+        }
+    }
+
 
     // Remove empty lists before chaining
     PArrays.RemoveAll([](const TArray<UAct*>& PArr) { return PArr.Num() == 0; });
 
 
     // Return if empty list
-    int32 PLength = PArrays.Num();
+    const int32 PLength = PArrays.Num();
     if (PLength == 0) {
         return TArray<UAct*>();
     }
@@ -234,34 +350,45 @@ EActOutcome UAct::Enter_Implementation() {
     return TickFlags != EActTickFlags::None ? EActOutcome::Pending : EActOutcome::Success;
 }
 EActOutcome UAct::Tick_Implementation() {
-    return EActOutcome::Pending;
+    return EActOutcome::Success;
 }
 void UAct::Exit_Implementation() {
 }
 void UAct::Cleanup_Implementation() {
 }
 void UAct::Finish(EActOutcome NewOutcome) {
-
-    // If currently prologuing
-    if (Status == EActStatus::Prologuing) {
-        ContinuePrologue(nullptr, NewOutcome);
-    }
-
-    // If currently entering or ticking
-    else if (Status == EActStatus::Entering || Status == EActStatus::Ticking) {
-        Redirect(EActStatus::Exiting, NewOutcome);
-    }
+    Redirect(EActStatus::Exiting, NewOutcome);
 }
-void UAct::BlockSelf_Implementation(UAct* ByAct, EActBlockType BlockType) {
+void UAct::BlockSelf_Implementation(class UAct* ByAct, EActBlockType BlockType) {
 
-    // Return if already blocked or if both are in the same prologue chain
-    if (BlockedByActs.Contains(ByAct) || InSamePrologueChain(this, ByAct)) {
+    // Return incase null act
+    if (ByAct == nullptr) {
+        WriteLog("Failed to block, null act provided!");
         return;
     }
 
 
+    // Return if already blocked
+    if (BlockedByActs.Contains(ByAct)) {
+        return;
+    }
+
+
+    // Return if both acts are in the same prologue chain
+    if (this != ByAct && (EpilogueActs.Num() != 0 || ByAct->EpilogueActs.Num() != 0)) {
+        ResultTopEpilogues.Empty();
+        VisitedTopEpilogues.Empty();
+        ByAct->ResultTopEpilogues.Empty();
+        ByAct->VisitedTopEpilogues.Empty();
+        if (DoesOverlap(GetTopEpilogues(this, ResultTopEpilogues, VisitedTopEpilogues), GetTopEpilogues(ByAct, ByAct->ResultTopEpilogues, ByAct->VisitedTopEpilogues))) {
+            WriteLog("Failed to block, Both " + Name + " and " + ByAct->Name + " are in the same prologue chain!");
+            return;
+        }
+    }
+
+
     // Finish interrupted incase ongoing
-    Finish(EActOutcome::Interrupted);
+    Redirect(EActStatus::Exiting, EActOutcome::Interrupted);
 
 
     // Add to blocked by list if persistent
@@ -277,6 +404,13 @@ void UAct::BlockSelf_Implementation(UAct* ByAct, EActBlockType BlockType) {
     }
 }
 void UAct::UnblockSelf_Implementation(UAct* ByAct) {
+
+    // Return incase null act
+    if (ByAct == nullptr) {
+        WriteLog("Failed to unblock, null act provided!");
+        return;
+    }
+
 
     // Return if not currently blocked by act
     if (!BlockedByActs.Contains(ByAct)) {
@@ -301,8 +435,17 @@ void UAct::BlockOthers_Implementation() {
 }
 void UAct::UnblockOthers_Implementation() {
     for (auto& Pair : ActsToBlock) {
-        Pair.Key->UnblockSelf(this);
+        if (Pair.Value == EActBlockType::Persistent) {
+            Pair.Key->UnblockSelf(this);
+        }
     }
+}
+void UAct::WriteLog_Implementation(const FString& Message, const FString& OverrideName) {
+    if (!bIsVerbose) {
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("[%s] %s"), *(OverrideName != TEXT("") ? OverrideName : Name), *Message);
 }
 
 
@@ -313,137 +456,207 @@ void UAct::LinkPrologueArrays(const TArray<UAct*>& ArrayB, const TArray<UAct*>& 
         UAct* ActB = ArrayB[i];
         for (int32 j = 0; j < ArrayA.Num(); j++) {
             UAct* ActA = ArrayA[j];
-            AssignPrologueEpilogue(ActB, ActA);
+            ActB->PrologueActs.Add(ActA);
+            ActA->EpilogueActs.Add(ActB);
+            ActA->PendingEpilogueActs.Add(ActB);
         }
     }
 }
-bool UAct::InSamePrologueChain(UAct* ActA, UAct* ActB) {
+TSet<UAct*> UAct::GetTopEpilogues(UAct* OfAct, TSet<UAct*>& Result, TSet<UAct*>& Visited) {
 
-    // Incase both are the same acts
-    if (ActA == ActB) {
-        return false;
+    // Skip if already visited
+    if (Visited.Contains(OfAct)) {
+        return Result;
     }
 
 
-    // Incase act a is a top epilogue
-    if (ActA->EpilogueActs.Num() == 0 && ActB->TopEpilogueActs.Contains(ActA)) {
-        return true;
+    // Mark as visited
+    Visited.Add(OfAct);
+
+
+    // Add if top epilogue
+    if (OfAct->EpilogueActs.Num() == 0) {
+        Result.Add(OfAct);
+        return Result;
     }
 
 
-    // Incase act b is a top epilogue
-    if (ActB->EpilogueActs.Num() == 0 && ActA->TopEpilogueActs.Contains(ActB)) {
-        return true;
+    // Recurse into each epilogue
+    for (UAct* EAct : OfAct->EpilogueActs) {
+        GetTopEpilogues(EAct, Result, Visited);
+    }
+
+    return Result;
+}
+void UAct::PrecomputePrologueChain(UAct* OfAct) {
+
+    // Fail Incase directly null provided
+    TArray<UAct*> PrologueActList;
+    if (OfAct->PrologueBP.IsBound()) {
+        PrologueActList = OfAct->PrologueBP.Execute(OfAct);
+    }
+    else if (OfAct->Prologue) {
+        PrologueActList = OfAct->Prologue(OfAct);
+    }
+    if (PrologueActList.Num() == 1 && PrologueActList.Contains(nullptr)) {
+        OfAct->Redirect(EActStatus::Exiting, EActOutcome::Failure);
+        return;
     }
 
 
-    // Check for overlap in top epilogue of both
-    for (UAct* EAct : ActA->TopEpilogueActs) {
-        if (ActB->TopEpilogueActs.Contains(EAct)) {
+    // Iterate through prologue acts
+    for (UAct* PAct : PrologueActList) {
+
+        // Skip self
+        if (PAct == OfAct) {
+            continue;
+        }
+
+
+        // Fail incase null
+        if (PAct == nullptr) {
+            OfAct->Redirect(EActStatus::Exiting, EActOutcome::Failure);
+            return;
+        }
+
+
+        // Assign prologue and epilogue
+        OfAct->PrologueActs.Add(PAct);
+        PAct->EpilogueActs.Add(OfAct);
+
+
+        // Recurse into prologue
+        PrecomputePrologueChain(PAct);
+    }
+
+
+    // Mark as precomputed
+    OfAct->bHasPrecomputedPrologues = true;
+}
+void UAct::FinishPrologues(UAct* OfAct, EActOutcome NewOutcome) {
+
+    // Set outcome to iterrupted incase retrying
+    EActOutcome POutcome = NewOutcome == EActOutcome::Retry ? EActOutcome::Interrupted : NewOutcome;
+
+
+    // Finish all pending prologues
+    while (OfAct->PendingPrologueActs.Num() != 0) {
+        UAct* PAct = GetFirst(OfAct->PendingPrologueActs);
+        OfAct->PendingPrologueActs.Remove(PAct);
+        if (PAct != nullptr) {
+            PAct->Finish(POutcome);
+        }
+    }
+}
+void UAct::ContinueEpilogues(UAct* OfAct, EActOutcome NewOutcome) {
+
+    // Continue and clear out epilogues
+    while (OfAct->PendingEpilogueActs.Num() != 0) {
+        UAct* EAct = GetFirst(OfAct->PendingEpilogueActs);
+        OfAct->PendingEpilogueActs.Remove(EAct);
+        EAct->CompletedPrologueActs.Add(OfAct);
+        EAct->CompletedPrologue(OfAct, NewOutcome);
+    }
+}
+void UAct::ClearPrologueChain(UAct* OfAct) {
+
+    while (OfAct->PrologueActs.Num() != 0 || OfAct->CompletedPrologueActs.Num() != 0) {
+
+        // Get prologue act
+        UAct* PAct;
+        if (OfAct->PrologueActs.Num() == 0) {
+            PAct = GetFirst(OfAct->CompletedPrologueActs);
+            OfAct->CompletedPrologueActs.Remove(PAct);
+        }
+        else {
+            PAct = GetFirst(OfAct->PrologueActs);
+            OfAct->PrologueActs.Remove(PAct);
+        }
+
+
+        // Skip if null
+        if (PAct == nullptr) {
+            continue;
+        }
+
+
+        // Remove self from epilogue
+        PAct->EpilogueActs.Remove(OfAct);
+        PAct->PendingEpilogueActs.Remove(OfAct);
+
+
+        // Recurse down, Incase Seq() linked stale acts that were never performed
+        if (PAct->EpilogueActs.Num() == 0) {
+            ClearPrologueChain(PAct);
+        }
+    }
+}
+UAct* UAct::GetFirst(const TSet<UAct*>& Data) {
+
+    if (Data.Num() == 0) {
+        return nullptr;
+    }
+
+    for (UAct* Act : Data) {
+        return Act;
+    }
+
+    return nullptr;
+}
+bool UAct::DoesOverlap(const TSet<UAct*>& A, const TSet<UAct*>& B) {
+    for (const UAct* K : A) {
+        if (B.Contains(K)) {
             return true;
         }
     }
 
     return false;
 }
-void UAct::FinishEpilogues(UAct* OfAct, EActOutcome NewOutcome) {
+bool UAct::CanPerformImpl(bool bIsRetrying) {
 
-    // Copy since ContinuePrologue may mutate epilogue set
-    TArray<UAct*> EpiloguesCopy = OfAct->EpilogueActs.Array();
-    for (UAct* EAct : EpiloguesCopy) {
-        if (EAct != nullptr) {
-            EAct->ContinuePrologue(OfAct, NewOutcome);
-        }
-    }
-}
-void UAct::FinishPrologues(UAct* OfAct, EActOutcome NewOutcome) {
-
-    // Copy since Finish may mutate prologue set
-    TArray<UAct*> ProloguesCopy = OfAct->PrologueActs.Array();
-    for (UAct* PAct : ProloguesCopy) {
-        if (PAct != nullptr) {
-            PAct->Finish(NewOutcome);
-        }
-    }
-}
-void UAct::ClearPrologueChain(UAct* OfAct) {
-
-    // Recurse clear
-    for (UAct* PAct : OfAct->PrologueActs) {
-        if (PAct != nullptr) {
-            ClearPrologueChain(PAct);
-        }
-    }
-
-    OfAct->EpilogueActs.Empty();
-    OfAct->TopEpilogueActs.Empty();
-    OfAct->PrologueActs.Empty();
-}
-void UAct::AssignPrologueEpilogue(UAct* EAct, UAct* PAct) {
-
-    // Assign prologue
-    EAct->PrologueActs.Add(PAct);
-
-
-    // Assign epilogue
-    PAct->EpilogueActs.Add(EAct);
-}
-void UAct::AssignTopEpilogues(UAct* EAct, TSet<UAct*> TopEpilogues) {
-
-    // Get top epilogues to pass on
-    if (TopEpilogues.Num() == 0) {
-        if (EAct->EpilogueActs.Num() == 0) {
-            TopEpilogues.Add(EAct);
-        }
-        else {
-            TopEpilogues = EAct->TopEpilogueActs;
-        }
-    }
-
-
-    // Recurse into prologues
-    for (UAct* PAct : EAct->PrologueActs) {
-
-        // Skip null
-        if (PAct == nullptr) {
-            continue;
-        }
-
-
-        // Assign top epilogues
-        PAct->TopEpilogueActs.Append(TopEpilogues);
-
-
-        // Recurse further down chain
-        AssignTopEpilogues(PAct, TopEpilogues);
-    }
-}
-bool UAct::CanPerformImpl() {
-
-    // Return if null theater
-    if (!IsValid(Theater)) {
-        UE_LOG(LogTemp, Warning, TEXT("%s Null theater found, initialize first!"), *Name);
+    // Return if in between initialization
+    if (bIsInitializing) {
+        WriteLog("Cannot perform, act is initializing or deinitializing!");
         return false;
     }
 
 
-    // Return conditions
-    if (!IsEnabled() || !Theater->IsEnabled() || IsBlocked() || (!bCanReperform && IsOngoing())) {
+    // Return if exiting
+    if (!bIsRetrying && Status == EActStatus::Exiting) {
+        WriteLog("Cannot perform, act is between exiting!");
         return false;
     }
 
 
-    // Return if any external BP condition is false
-    for (FPerformCondition& CondBP : PerformConditionsBP) {
-        if (CondBP.IsBound() && !CondBP.Execute(this)) {
-            return false;
-        }
+    // Return if disabled or theater is disabled
+    if (!IsEnabled() || (Theater != nullptr && !Theater->IsEnabled())) {
+        WriteLog("Cannot perform, act or theater is disabled!");
+        return false;
+    }
+
+
+    // Return if blocked
+    if (IsBlocked()) {
+        WriteLog("Cannot perform, act is blocked!");
+        return false;
+    }
+
+
+    // Return if already ongoing
+    if (!bIsRetrying && !bCanReperform && IsOngoing()) {
+        WriteLog("Cannot perform, act is ongoing!");
+        return false;
     }
 
 
     // Return if any external condition is false
     for (TFunction<bool(UAct*)>& Cond : PerformConditions) {
-        if (!Cond(this)) {
+        if (Cond && !Cond(this)) {
+            return false;
+        }
+    }
+    for (FPerformCondition& CondBP : PerformConditionsBP) {
+        if (CondBP.IsBound() && !CondBP.Execute(this)) {
             return false;
         }
     }
@@ -452,58 +665,59 @@ bool UAct::CanPerformImpl() {
 }
 void UAct::PerformImpl() {
 
-    // Store tick
+    // Finish any ongoing perform
+    if (Status != EActStatus::None) {
+        Finish(EActOutcome::Interrupted);
+    }
+
+
+    // Store during which tick act was performed
+    PerformCount++;
     PerformedOnTick = static_cast<int64>(GFrameCounter);
 
 
-    // Mark outcome as pending
-    Outcome = EActOutcome::Pending;
+    // Clear deferred
+    if (Theater != nullptr) {
+        Theater->UnstageDeferred(this);
+    }
 
 
-    // Finish any ongoing perform
-    Finish(EActOutcome::Interrupted);
-
-
-    // Redirect to prologue
+    // Start prologuing
     Redirect(EActStatus::Prologuing);
 }
 void UAct::PrologueImpl() {
 
-    // Let theater know this act is now ongoing
-    if (IsValid(Theater)) {
+    // Broadcast perform start
+    OnPerformStartBP.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
+
+    OnPerformStart.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
+
+
+    // Let theater know this act has started
+    if (Theater != nullptr) {
         Theater->StageOngoing(this);
     }
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
 
 
-	// Assign all prologues & epilogues
-    TArray<UAct*> AllPrologues = PrologueBP.IsBound() ? PrologueBP.Execute(this) : TArray<UAct*>();
-    AllPrologues.Append(Prologue(this));
-    for (UAct* PAct : AllPrologues) {
-
-        // Skip self
-        if (PAct == this) {
-            continue;
-        }
-
-        // Fail incase null
-        if (PAct == nullptr) {
-            Redirect(EActStatus::Exiting, EActOutcome::Failure);
-            return;
-        }
-
-        // Assign prologue & epilogue
-        AssignPrologueEpilogue(this, PAct);
+    // Precompute prologue chain
+    if (!bHasPrecomputedPrologues) {
+        PrecomputePrologueChain(this);
     }
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
 
 
-    // Assign all top epilogues
-    AssignTopEpilogues(this);
+    // Assign self as pending epilogue
+    for (UAct* PAct : PrologueActs) {
+        PAct->PendingEpilogueActs.Add(this);
+    }
 
 
     // Block
     BlockOthers();
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
 
 
     // Skip if no prologues
@@ -514,80 +728,114 @@ void UAct::PrologueImpl() {
 
 
     // Broadcast pre prologue
-    OnPrePrologueBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
-    
     OnPrePrologue.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
+
+    OnPrePrologueBP.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
 
 
     // Perform all prologues
-    for (UAct* PAct : PrologueActs) {
+    while (PrologueActs.Num() != 0) {
 
-        // Skip if ongoing
+        // Guard
+        UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);
+
+
+        // Skip prologue if ongoing
+        UAct* PAct = GetFirst(PrologueActs);
         if (PAct->IsOngoing()) {
+            PrologueActs.Remove(PAct);
+            PendingPrologueActs.Add(PAct);
             continue;
         }
 
-        // Fail incase cannot perform
-        if (!PAct->CanPerformImpl()) {
-            Redirect(EActStatus::Exiting, EActOutcome::Failure);
-            return;
+
+        // Skip if already completed
+        if (CompletedPrologueActs.Contains(PAct)) {
+            PrologueActs.Remove(PAct);
+            CompletedPrologue(PAct, EActOutcome::Success);
+            continue;
         }
 
-        // Perform
-        PAct->PerformImpl();
-        UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
+
+        // Perform prologue
+        if (PAct->CanPerformImpl()) {
+            PrologueActs.Remove(PAct);
+            PendingPrologueActs.Add(PAct);
+            PAct->PerformImpl();
+            continue;
+        }
+
+
+        // Exit with failure if failed to perform
+        Redirect(EActStatus::Exiting, EActOutcome::Failure);
+        return;
     }
 }
-void UAct::ContinuePrologue(UAct* PAct, EActOutcome NewOutcome) {
+void UAct::CompletedPrologue(UAct* PAct, EActOutcome NewOutcome) {
 
     // Guard
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);
+
+
+    // Remove from pending and move to completed
+    PendingPrologueActs.Remove(PAct);
+
+
+    // Broadcast prologue completed
+    OnPrologueComplete.Broadcast(this, PAct, NewOutcome);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);
+
+    OnPrologueCompleteBP.Broadcast(this, PAct, NewOutcome);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);
+
+
+    // Exit if prologue act did not succeed
+    if (NewOutcome != EActOutcome::Success) {
+        Redirect(EActStatus::Exiting, NewOutcome);
+        return;
+    }
 
 
     // Wait for all prologues to complete
-    bool bPrologueSucceeded = NewOutcome == EActOutcome::Success && PAct != nullptr;
-    if (bPrologueSucceeded && PrologueCompleteCount + 1 != PrologueActs.Num()) {
-        PrologueCompleteCount += 1;
+    if (PendingPrologueActs.Num() != 0 || PrologueActs.Num() != 0) {
         return;
     }
 
 
     // Broadcast post prologue
-    if (bPrologueSucceeded) {
-        OnPostPrologueBP.Broadcast(this);
-        UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
+    OnPostPrologue.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
 
-        OnPostPrologue.Broadcast(this);
-        UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing)  // Guard
-    }
+    OnPostPrologueBP.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);  // Guard
 
 
-    // If prologue succeeded goto enter otherwise exit
-    Redirect(bPrologueSucceeded ? EActStatus::Entering : EActStatus::Exiting, NewOutcome);
+    // Redirect to enter
+    Redirect(EActStatus::Entering);
 }
 void UAct::EnterImpl() {
 
     // Broadcast pre enter
-    OnPreEnterBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering)  // Guard
-
     OnPreEnter.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering)  // Guard
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering);  // Guard
+
+    OnPreEnterBP.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering);  // Guard
 
 
     // Core enter
     EActOutcome NewOutcome = Enter();
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering)  // Guard
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering);  // Guard
 
 
     // Broadcast post enter
-    OnPostEnterBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering)  // Guard
-
     OnPostEnter.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering)  // Guard
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering);  // Guard
+
+    OnPostEnterBP.Broadcast(this);
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering);  // Guard
 
 
     // Redirect to exit
@@ -597,40 +845,72 @@ void UAct::EnterImpl() {
     }
 
 
-    // Start ticking
-    if (CanTick(EActTickFlags::Tick) && IsValid(Theater)) {
-        Theater->StageTick(this);
+    // Return if no ticking
+    if (TickFlags == EActTickFlags::None) {
+        return;
     }
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Entering)  // Guard
+
+
+    // Return if no theater assigned for ticking
+    if (Theater == nullptr) {
+        WriteLog("Cannot tick, Assign a theater first!");
+        return;
+    }
 
 
     // Redirect to ticking
     Redirect(EActStatus::Ticking);
 }
+void UAct::HandleTickingImpl() {
+    if (CanTick(EActTickFlags::Tick)) {
+        TickReqCount++;
+        Theater->StageTick(this);
+    }
+}
 void UAct::TickImpl() {
 
     // Guard
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking)
+    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking);
+
+
+    // Increment tick count
+    TickCount++;
+
+
+    // Save tick request count
+    int32 CurrTickReqCount = TickReqCount;
 
 
     // Broadcast pre tick
-    OnPreTickBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking)  // Guard
     OnPreTick.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking)  // Guard
+    if (Status != EActStatus::Ticking || CurrTickReqCount != TickReqCount) {
+        return;  // Guard
+    }
+
+    OnPreTickBP.Broadcast(this);
+    if (Status != EActStatus::Ticking || CurrTickReqCount != TickReqCount) {
+        return;  // Guard
+    }
 
 
     // Core tick
     EActOutcome NewOutcome = Tick();
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking)  // Guard
+    if (Status != EActStatus::Ticking || CurrTickReqCount != TickReqCount) {
+        return;  // Guard
+    }
 
 
     // Broadcast post tick
-    OnPostTickBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking)  // Guard
-
     OnPostTick.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Ticking)  // Guard
+    if (Status != EActStatus::Ticking || CurrTickReqCount != TickReqCount) {
+        return;  // Guard
+    }
+
+
+    OnPostTickBP.Broadcast(this);
+    if (Status != EActStatus::Ticking || CurrTickReqCount != TickReqCount) {
+        return;  // Guard
+    }
 
 
     // Check if exit was requested
@@ -640,93 +920,100 @@ void UAct::TickImpl() {
 }
 void UAct::ExitImpl() {
 
-    // Stop ticking
-    if (CanTick(EActTickFlags::Tick) && IsValid(Theater)) {
-        Theater->UnstageTick(this);
+    // Only exit if coming from enter or tick
+    if (PrevStatus == EActStatus::Entering || PrevStatus == EActStatus::Ticking) {
+
+        // Stop ticking
+        if (CanTick(EActTickFlags::Tick) && Theater != nullptr) {
+            Theater->UnstageTick(this);
+        }
+
+
+        // Broadcast pre exit
+        OnPreExitBP.Broadcast(this);
+        OnPreExit.Broadcast(this);
+
+
+        // Core exit
+        Exit();
+
+
+        // Broadcast post exit
+        OnPostExitBP.Broadcast(this);
+        OnPostExit.Broadcast(this);
     }
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
 
 
-    // Broadcast pre exit
-    OnPreExitBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-    OnPreExit.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-
-    // Core exit
-    Exit();
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-
-    // Broadcast post exit
-    OnPostExitBP.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-    OnPostExit.Broadcast(this);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-
-    // Finish epilogues
-    if (Outcome != EActOutcome::Retry) {
-        FinishEpilogues(this, Outcome);
-    }
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-
-    // Finish prologues
-    FinishPrologues(this, Outcome == EActOutcome::Retry ? EActOutcome::Interrupted : Outcome);
-    UE_STATUS_SAFEGUARD(Status, EActStatus::Exiting)  // Guard
-
-
-    // Clear chain
+    // Cleanup prologues
+    FinishPrologues(this, Outcome);
     ClearPrologueChain(this);
+    bHasPrecomputedPrologues = false;
+    PrologueActs.Empty();
+    PendingPrologueActs.Empty();
+    CompletedPrologueActs.Empty();
 
 
-    // Reset properties
-    bool bToRetry = Outcome == EActOutcome::Retry;
-    Status = EActStatus::None;
-    bDidEnter = false;
-    PrologueCompleteCount = 0;
+    // Retry
+    if (Outcome == EActOutcome::Retry) {
+        if (CanPerformImpl(true)) {
+            Status = EActStatus::None;
+            PerformImpl();
+            return;
+        }
 
-
-    // Unblock
-    UnblockOthers();
-
-
-    // Retry perform
-    if (bToRetry && CanPerformImpl()) {
-        PerformImpl();
-        return;
+        // Change outcome to failure since could not retry
+        Outcome = EActOutcome::Failure;
     }
+
+
+    // Unblock & Continue Epilogues
+    UnblockOthers();
+    ContinueEpilogues(this, Outcome);
+    EpilogueActs.Empty();
+    PendingEpilogueActs.Empty();
+
+
+    // Reset status
+    Status = EActStatus::None;
 
 
     // Let theater know this act has ended
-    Theater->UnstageOngoing(this);
+    if (IsValid(Theater)) {
+        Theater->UnstageOngoing(this);
+    }
+
+
+    // Broadcast perform end
+    OnPerformEndBP.Broadcast(this);
+    OnPerformEnd.Broadcast(this);
 }
 void UAct::Redirect(EActStatus NewStatus, EActOutcome NewOutcome) {
 
-    // None to Prologue
+    // None -> prologue
     if (Status == EActStatus::None && NewStatus == EActStatus::Prologuing) {
+        PrevStatus = Status;
         Status = EActStatus::Prologuing;
+        Outcome = EActOutcome::Pending;
         PrologueImpl();
     }
 
-    // Prologue to Enter
+    // prologue -> Enter
     else if (Status == EActStatus::Prologuing && NewStatus == EActStatus::Entering) {
+        PrevStatus = Status;
         Status = EActStatus::Entering;
         EnterImpl();
     }
 
-    // Enter to Tick
+    // Enter -> Tick
     else if (Status == EActStatus::Entering && NewStatus == EActStatus::Ticking) {
+        PrevStatus = Status;
         Status = EActStatus::Ticking;
+        HandleTickingImpl();
     }
 
-    // Prologue or Enter or Tick to Exit
+    // prologue or Enter or Tick -> Exit
     else if ((Status == EActStatus::Prologuing || Status == EActStatus::Entering || Status == EActStatus::Ticking) && NewStatus == EActStatus::Exiting) {
-        bDidEnter = Status == EActStatus::Entering || Status == EActStatus::Ticking;
+        PrevStatus = Status;
         Status = EActStatus::Exiting;
         Outcome = NewOutcome;
         ExitImpl();

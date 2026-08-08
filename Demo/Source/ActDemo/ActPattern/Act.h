@@ -1,6 +1,30 @@
+// v0.1.1-alpha
+//
+// Copyright (c) 2025-present Manas Ravindra Makde
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/NoExportTypes.h"
 #include "Act.generated.h"
 
 
@@ -8,6 +32,9 @@
 // Macros
 #define UE_STATUS_SAFEGUARD(CURRENT_VALUE, CHECK_VALUE) if (CURRENT_VALUE != CHECK_VALUE) { return; }
 
+
+// Forward declarations
+class UTheater;
 
 
 // Enums
@@ -29,16 +56,16 @@ enum class EActStatus : uint8 {
 
 UENUM(BlueprintType)
 enum class EActOutcome : uint8 {
-    Interrupted = -2,
-    Failure = -1,
-    Pending = 0,
-    Success = 1,
-    Retry = 2
+    Interrupted,
+    Failure,
+    Pending,
+    Success,
+    Retry
 };
 
 UENUM(BlueprintType)
 enum class EActBlockType : uint8 {
-    Oneshot,
+    Interrupt,
     Persistent
 };
 
@@ -50,7 +77,7 @@ struct FActArray {
     GENERATED_BODY()
 
     UPROPERTY(BlueprintReadWrite, Category = "Act")
-    TArray<UAct*> Acts;
+    TArray<class UAct*> Acts;
 };
 
 
@@ -59,6 +86,10 @@ struct FActArray {
 UDELEGATE()
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnActBP, UAct*, Act);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAct, UAct* /* Act */);
+
+UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPrologueCompleteBP, UAct*, Act, UAct*, PrologueAct, EActOutcome, Outcome);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnPrologueComplete, UAct* /* Act */, UAct* /* PrologueAct */, EActOutcome /* Outcome */);
 
 UDELEGATE()
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEnableChangedBP, UAct*, Act, bool, bNewIsEnabled);
@@ -82,59 +113,68 @@ class ACTDEMO_API UAct : public UObject {
 
     GENERATED_BODY()
 
-
    public:
     // Friends
     friend class UTheater;
 
 
-
     // Public Delegates
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPreSetupBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostSetupBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
+    FOnActBP OnPerformStartBP;
+
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPrePrologueBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
+    FOnPrologueCompleteBP OnPrologueCompleteBP;
+
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostPrologueBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPreEnterBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostEnterBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPreTickBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostTickBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPreExitBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostExitBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
+    FOnActBP OnPerformEndBP;
+
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPreCleanupBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostCleanupBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnEnableChangedBP OnEnableChangedBP;
 
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnBlockChangedBP OnBlockChangedBP;
 
     FOnAct OnPreSetup;
     FOnAct OnPostSetup;
+    FOnAct OnPerformStart;
     FOnAct OnPrePrologue;
+    FOnPrologueComplete OnPrologueComplete;
     FOnAct OnPostPrologue;
     FOnAct OnPreEnter;
     FOnAct OnPostEnter;
@@ -142,6 +182,7 @@ class ACTDEMO_API UAct : public UObject {
     FOnAct OnPostTick;
     FOnAct OnPreExit;
     FOnAct OnPostExit;
+    FOnAct OnPerformEnd;
     FOnAct OnPreCleanup;
     FOnAct OnPostCleanup;
     FOnEnableChanged OnEnableChanged;
@@ -150,20 +191,23 @@ class ACTDEMO_API UAct : public UObject {
 
 
     // Public Properties
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "Act")
     FPrologueBP PrologueBP;
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "Act")
     TArray<FPerformCondition> PerformConditionsBP;
 
     TFunction<TArray<UAct*>(UAct*)> Prologue = [](UAct* /*Act*/) -> TArray<UAct*> { return TArray<UAct*>(); };
     TArray<TFunction<bool(UAct*)>> PerformConditions = {};
 
+    UPROPERTY(BlueprintReadWrite, Category = "Act")
+    bool bIsVerbose = false;  // Toggle for warning messages
+
 
 
     // Public Methods
     UFUNCTION(BlueprintCallable, Category = "Act")
-    void Init(class UTheater* NewTheater, const FString& InName = TEXT(""), bool bInitiallyEnabled = true);
+    void Init(FString NewName = TEXT(""), class UTheater* NewTheater = nullptr, bool bInitiallyEnabled = true);
 
     UFUNCTION(BlueprintCallable, Category = "Act")
     void Deinit();
@@ -181,48 +225,60 @@ class ACTDEMO_API UAct : public UObject {
     void Abort();
 
     UFUNCTION(BlueprintCallable, Category = "Act")
-    void AddToBlock(const TArray<UAct*>& Acts, EActBlockType BlockType = EActBlockType::Persistent);
+    void AddToBlock(TArray<UAct*> Acts, EActBlockType BlockType = EActBlockType::Persistent);
 
     UFUNCTION(BlueprintCallable, Category = "Act")
-    void RemoveFromBlock(const TArray<UAct*>& Acts);
+    void RemoveFromBlock(TArray<UAct*> Acts);
 
     UFUNCTION(BlueprintCallable, Category = "Act")
     void SetEnabled(bool bNewEnabled);
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
-    bool DidPerform(EActTickFlags TickFlag = EActTickFlags::Tick);  // True if act was performed at least once during current tick
+    UFUNCTION(BlueprintPure, Category = "Act")
+    bool DidPerform(EActTickFlags TickFlag = EActTickFlags::Tick) const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
-    bool DidPerformEver() const;  // True if act was performed at least once since init
-
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
     bool IsOngoing() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
+    bool IsActive() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
     bool IsEnabled() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
     bool IsBlocked() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
-    bool DidEnter() const;
-
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
     bool CanTick(EActTickFlags Type) const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
+    class UTheater* GetTheater() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    class AActor* GetOwner() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    TSet<UAct*> GetBlockedByActs() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    TMap<UAct*, EActBlockType> GetActsToBlock() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    EActStatus GetStatus() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
     EActOutcome GetOutcome() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
-    UTheater* GetTheater() const;
+    UFUNCTION(BlueprintPure, Category = "Act")
+    int32 GetPerformCount() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
-    AActor* GetOwner() const;
+    UFUNCTION(BlueprintPure, Category = "Act")
+    int32 GetTickCount() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
     float GetDelta() const;
 
-    UFUNCTION(BlueprintCallable, Category = "Act")
+    UFUNCTION(BlueprintPure, Category = "Act")
     FString GetName() const;
 
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Act")
@@ -235,10 +291,13 @@ class ACTDEMO_API UAct : public UObject {
    protected:
     // Protected Properties
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Act")
-    bool bCanReperform = false;  // Indicates if act can interrupt itself and restart perform, assign in Setup
+    FString Name = "";
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Act")
-    EActTickFlags TickFlags = EActTickFlags::None;  // Indicates if act will be ticking after entering, assign in Setup
+    bool bCanReperform = false;  // Indicates if act can interrupt itself & restart perform
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Act")
+    EActTickFlags TickFlags = EActTickFlags::None;  // Indicates if act will be "Ticking" after entering
 
 
 
@@ -261,11 +320,11 @@ class ACTDEMO_API UAct : public UObject {
     UFUNCTION(BlueprintNativeEvent, Category = "Act")
     void Cleanup();
 
-    UFUNCTION(Category = "Act")
-    void Finish(EActOutcome NewOutcome = EActOutcome::Success);  // Call in Enter() if Exit() needs to be delayed
+    UFUNCTION(BlueprintCallable, Category = "Act")
+    void Finish(EActOutcome NewOutcome = EActOutcome::Success);
 
     UFUNCTION(BlueprintNativeEvent, Category = "Act")
-    void BlockSelf(UAct* ByAct, EActBlockType BlockType);
+    void BlockSelf(class UAct* ByAct, EActBlockType BlockType);
 
     UFUNCTION(BlueprintNativeEvent, Category = "Act")
     void UnblockSelf(UAct* ByAct);
@@ -276,24 +335,24 @@ class ACTDEMO_API UAct : public UObject {
     UFUNCTION(BlueprintNativeEvent, Category = "Act")
     void UnblockOthers();
 
+    UFUNCTION(BlueprintNativeEvent, Category = "Act")
+    void WriteLog(const FString& Message, const FString& OverrideName = "");
+
 
 
    private:
     // Private Properties
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    FString Name;  // Useful for debugging
+    class UTheater* Theater = nullptr;  // Which theater this act belongs to
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    UTheater* Theater;  // Which theater this act belongs to
+    EActStatus Status = EActStatus::None;  // Keeps track of where in the perform life cycle the act is currently
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    EActStatus Status = EActStatus::None;
+    EActStatus PrevStatus = EActStatus::None;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    EActOutcome Outcome = EActOutcome::Pending;
-
-    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    bool bDidEnter = false;
+    EActOutcome Outcome = EActOutcome::Pending;  // Denotes how the act ended
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     TMap<UAct*, EActBlockType> ActsToBlock;  // Which acts to block when performing this act
@@ -302,35 +361,64 @@ class ACTDEMO_API UAct : public UObject {
     TSet<UAct*> BlockedByActs;  // Which acts are blocking this act
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    TSet<UAct*> TopEpilogueActs;
+    TSet<UAct*> EpilogueActs;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    TSet<UAct*> EpilogueActs;
+    TSet<UAct*> PendingEpilogueActs;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     TSet<UAct*> PrologueActs;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    int32 PrologueCompleteCount = 0;
+    TSet<UAct*> PendingPrologueActs;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    TSet<UAct*> CompletedPrologueActs;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    TSet<UAct*> ResultTopEpilogues;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    TSet<UAct*> VisitedTopEpilogues;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    bool bHasInitialized = false;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    bool bIsInitializing = false;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    bool bHasPrecomputedPrologues = false;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    int32 PerformCount = 0;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    int32 TickCount = 0;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    int32 TickReqCount = 0;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     int64 PerformedOnTick = -1;
 
 
-
     // Private Methods
     static void LinkPrologueArrays(const TArray<UAct*>& ArrayB, const TArray<UAct*>& ArrayA);
-    static bool InSamePrologueChain(UAct* ActA, UAct* ActB);
-    static void FinishEpilogues(UAct* OfAct, EActOutcome NewOutcome);
+    static TSet<UAct*> GetTopEpilogues(UAct* OfAct, TSet<UAct*>& Result, TSet<UAct*>& Visited);
+    static void PrecomputePrologueChain(UAct* OfAct);
     static void FinishPrologues(UAct* OfAct, EActOutcome NewOutcome);
+    static void ContinueEpilogues(UAct* OfAct, EActOutcome NewOutcome);
     static void ClearPrologueChain(UAct* OfAct);
-    static void AssignPrologueEpilogue(UAct* EAct, UAct* PAct);
-    static void AssignTopEpilogues(UAct* EAct, TSet<UAct*> TopEpilogues = TSet<UAct*>());
-    bool CanPerformImpl();
+    static UAct* GetFirst(const TSet<UAct*>& Data);
+	static bool DoesOverlap(const TSet<UAct*>& A, const TSet<UAct*>& B);
+
+    bool CanPerformImpl(bool bIsRetrying = false);
     void PerformImpl();
     void PrologueImpl();
-    void ContinuePrologue(UAct* PAct, EActOutcome NewOutcome = EActOutcome::Pending);
+    void CompletedPrologue(UAct* PAct, EActOutcome NewOutcome);
     void EnterImpl();
+    void HandleTickingImpl();
     void TickImpl();
     void ExitImpl();
     void Redirect(EActStatus NewStatus, EActOutcome NewOutcome = EActOutcome::Pending);
