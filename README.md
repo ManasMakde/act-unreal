@@ -1,7 +1,7 @@
 # 🎭 act-unreal
 
 [![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-0E1128?style=flat&logo=unrealengine&logoColor=white)](https://www.unrealengine.com)
-![Status: Alpha](https://img.shields.io/badge/status-0.1.1--alpha-orange)
+![Status: Alpha](https://img.shields.io/badge/status-0.2.0--alpha-orange)
 ![License](https://img.shields.io/github/license/ManasMakde/act-unreal?style=flat&color=yellow)
 
 This is the unreal engine implementation of the **Act Pattern**.  
