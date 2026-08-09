@@ -47,7 +47,7 @@ ENUM_CLASS_FLAGS(EActTickFlags)
 
 UENUM(BlueprintType)
 enum class EActStatus : uint8 {
-    None = 0,
+    None,
     Prologuing,
     Entering,
     Ticking,
@@ -207,7 +207,7 @@ class ACTDEMO_API UAct : public UObject {
 
     // Public Methods
     UFUNCTION(BlueprintCallable, Category = "Act")
-    void Init(FString NewName = TEXT(""), class UTheater* NewTheater = nullptr, bool bInitiallyEnabled = true);
+    void Init(FString NewName = TEXT(""), class UTheater* NewTheater = nullptr, bool bIsInitiallyEnabled = true);
 
     UFUNCTION(BlueprintCallable, Category = "Act")
     void Deinit();
@@ -235,6 +235,12 @@ class ACTDEMO_API UAct : public UObject {
 
     UFUNCTION(BlueprintPure, Category = "Act")
     bool DidPerform(EActTickFlags TickFlag = EActTickFlags::Tick) const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    bool HasInitialized() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    bool IsInitializing() const;
 
     UFUNCTION(BlueprintPure, Category = "Act")
     bool IsOngoing() const;
@@ -282,9 +288,9 @@ class ACTDEMO_API UAct : public UObject {
     FString GetName() const;
 
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Act")
-    static TArray<UAct*> SeqBP(TArray<FActArray> PArrays);  // Only use inside Prologue
+    static TArray<UAct*> SeqBP(TArray<FActArray> PArrays);
 
-    static TArray<UAct*> Seq(TArray<TArray<UAct*>> PArrays);  // Only use inside Prologue
+    static TArray<UAct*> Seq(TArray<TArray<UAct*>> PArrays);
 
 
 
@@ -294,10 +300,10 @@ class ACTDEMO_API UAct : public UObject {
     FString Name = "";
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Act")
-    bool bCanReperform = false;  // Indicates if act can interrupt itself & restart perform
+    bool bCanReperform = false;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Act")
-    EActTickFlags TickFlags = EActTickFlags::None;  // Indicates if act will be "Ticking" after entering
+    EActTickFlags TickFlags = EActTickFlags::None;
 
 
 
@@ -343,22 +349,22 @@ class ACTDEMO_API UAct : public UObject {
    private:
     // Private Properties
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    class UTheater* Theater = nullptr;  // Which theater this act belongs to
+    class UTheater* Theater = nullptr;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    EActStatus Status = EActStatus::None;  // Keeps track of where in the perform life cycle the act is currently
+    EActStatus Status = EActStatus::None;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     EActStatus PrevStatus = EActStatus::None;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    EActOutcome Outcome = EActOutcome::Pending;  // Denotes how the act ended
+    EActOutcome Outcome = EActOutcome::Pending;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    TMap<UAct*, EActBlockType> ActsToBlock;  // Which acts to block when performing this act
+    TMap<UAct*, EActBlockType> ActsToBlock;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
-    TSet<UAct*> BlockedByActs;  // Which acts are blocking this act
+    TSet<UAct*> BlockedByActs;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     TSet<UAct*> EpilogueActs;

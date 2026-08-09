@@ -26,7 +26,7 @@
 #include "Misc/App.h"
 
 
-void UAct::Init(FString NewName, class UTheater* NewTheater, bool bInitiallyEnabled) {
+void UAct::Init(FString NewName, class UTheater* NewTheater, bool bIsInitiallyEnabled) {
 
     // Return if trying to reinitialize
     if (bHasInitialized) {
@@ -60,7 +60,7 @@ void UAct::Init(FString NewName, class UTheater* NewTheater, bool bInitiallyEnab
 
 
     // Disable Initially
-    if (!bInitiallyEnabled) {
+    if (!bIsInitiallyEnabled) {
         BlockSelf(this, EActBlockType::Persistent);
     }
 
@@ -116,11 +116,6 @@ void UAct::Deinit() {
     Cleanup();
 
 
-    // Broadcast post cleanup
-    OnPostCleanupBP.Broadcast(this);
-    OnPostCleanup.Broadcast(this);
-
-
     // Unassign owning theater
     if (IsValid(Theater)) {
         Theater->RemoveAct(this);
@@ -136,6 +131,11 @@ void UAct::Deinit() {
     // Mark as deinitialization completed
     bIsInitializing = false;
     bHasInitialized = false;
+
+
+    // Broadcast post cleanup
+    OnPostCleanupBP.Broadcast(this);
+    OnPostCleanup.Broadcast(this);
 }
 void UAct::Perform() {
     if (CanPerformImpl()) {
@@ -176,8 +176,8 @@ void UAct::AddToBlock(TArray<UAct*> Acts, EActBlockType BlockType) {
 
     for (UAct* BAct : Acts) {
 
-        // Skip if self (reserved for enable/disable)
-        if (BAct == this) {
+        // Skip if self (reserved for enable/disable) or null
+        if (BAct == this || BAct == nullptr) {
             WriteLog("Trying to block self!");
             continue;
         }
@@ -197,8 +197,8 @@ void UAct::RemoveFromBlock(TArray<UAct*> Acts) {
 
     for (UAct* BAct : Acts) {
 
-        // Skip if self (reserved for enable/disable)
-        if (BAct == this) {
+        // Skip if self (reserved for enable/disable) or null
+        if (BAct == this || BAct == nullptr) {
             WriteLog("Trying to unblock self!");
             continue;
         }
@@ -248,6 +248,12 @@ bool UAct::DidPerform(EActTickFlags TickFlag) const {
     }
 
     return bHasPerformed;
+}
+bool UAct::HasInitialized() const {
+    return bHasInitialized;
+}
+bool UAct::IsInitializing() const {
+    return bIsInitializing;
 }
 bool UAct::IsOngoing() const {
     return Status != EActStatus::None;

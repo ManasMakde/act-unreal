@@ -43,7 +43,7 @@
 
 | Access | Type | Methods |
 |--------|------|--------------|
-| public | void | [Init](#init)(FString NewName, UTheater* NewTheater, bool bInitiallyEnabled) |
+| public | void | [Init](#init)(FString NewName, UTheater* NewTheater, bool bIsInitiallyEnabled) |
 | public | void | [Deinit](#deinit)() |
 | public | void | [Perform](#perform)() |
 | public | void | [PerformDeferred](#performdeferred)([EActTickFlags](#eacttickflags) TickFlag) |
@@ -53,6 +53,8 @@
 | public | void | [RemoveFromBlock](#removefromblock)(TArray\<UAct*\> Acts) |
 | public | void | [SetEnabled](#setenabled)(bool bNewEnabled) |
 | public const | bool | [DidPerform](#didperform)([EActTickFlags](#eacttickflags) TickFlag) |
+| public const | bool | [HasInitialized](#hasinitialized)() |
+| public const | bool | [IsInitializing](#isinitializing)() |
 | public const | bool | [IsOngoing](#isongoing)() |
 | public const | bool | [IsActive](#isactive)() |
 | public const | bool | [IsEnabled](#isenabled)() |
@@ -388,7 +390,7 @@ Determines whether [`Tick()`](#tick) should be called. Look into [`Enter()`](#en
 ---
 
 
-### <a id="init"></a> public void Init(FString NewName = "", UTheater* NewTheater = nullptr, bool bInitiallyEnabled = true)
+### <a id="init"></a> public void Init(FString NewName = "", UTheater* NewTheater = nullptr, bool bIsInitiallyEnabled = true)
 This method is used to initialize the act. Generally this will be called in [`BeginPlay()`][UE-BeginPlay] though it can be used elsewhere if required.
 ```cpp
 void AMyPawn::BeginPlay()
@@ -519,6 +521,20 @@ void AMyPawn::Tick(float DeltaTime)
     UE_LOG(LogTemp, Log, TEXT("%d"), MyAct->DidPerform(EActTickFlags::Tick));  // true
 }
 ```
+
+
+---
+
+
+### <a id="hasinitialized"></a> public bool HasInitialized() const
+Returns `true` if the act has been [initialized](#init). Resets to `false` once [deinitialized](#deinit)
+
+
+---
+
+
+### <a id="isinitializing"></a> public bool IsInitializing() const
+Returns `true` if the act is currently in between [`Init()`](#init) or [`Deinit()`](#deinit).
 
 
 ---
