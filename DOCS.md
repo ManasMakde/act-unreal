@@ -362,6 +362,8 @@ Controls whether or not to print warnings. Set to `false` to silence them.
 ### <a id="name"></a> protected FString Name
 `Default: ""`
 
+> **Note:** If you want to give the act a default name assign this in [`Setup()`](#setup) method. However this will be overriden if name argument is passed to [`Init()`](#init).
+
 Name of the act, Mainly useful for debugging purposes.
 
 
@@ -453,7 +455,7 @@ void AMyPawn::Tick(float DeltaTime)
 ### <a id="performdeferred"></a> public void PerformDeferred([EActTickFlags](#eacttickflags) TickFlag = EActTickFlags::Tick)
 > **Note:** Requires a `Theater` to be assigned.
 
-This will delay off the [`Perform()`](#perform)until the next tick. Useful to avoid infinite recursion when trying to reperform an act.
+This will delay off the [`Perform()`](#perform) until the next tick. Useful to avoid infinite recursion when trying to reperform an act.
 
 
 ---
@@ -468,7 +470,7 @@ If the act is not performing this will simply call [`Perform()`](#perform).
 
 
 ### <a id="abort"></a> public void Abort()
-This will finish the act if it's performing with [EActOutcome::Interrupted](#eactoutcome).  
+This will finish the act if its performing with [EActOutcome::Interrupted](#eactoutcome).  
 Won't do anything if the act was not performing.
 
 
@@ -905,7 +907,7 @@ void UMyAct::UnblockOthers_Implementation()
 
 
 ### <a id="writelog"></a> protected void WriteLog(FString Message, FString OverrideName = "")
-This method is used internally to print warnings when [bIsVerbose](#bisverbose) is `true`, Only kept incase some special functionality needs to be hooked when a warning is logged.
+Used internally to log warning messages when [bIsVerbose](#bisverbose) is `true`. Only kept incase some special functionality needs to be hooked when a warning is logged.
 
 
 <br/>
@@ -982,7 +984,7 @@ Returns `true` if any act is currently performing.
 
 
 ### <a id="getallacts"></a> public TSet\<UAct*\> GetAllActs() const
-Returns a set of all the acts assigned to the theater.
+Returns all the acts assigned to the theater.
 
 
 
