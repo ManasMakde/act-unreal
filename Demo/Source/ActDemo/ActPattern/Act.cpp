@@ -137,10 +137,13 @@ void UAct::Deinit() {
     OnPostCleanupBP.Broadcast(this);
     OnPostCleanup.Broadcast(this);
 }
-void UAct::Perform() {
+bool UAct::Perform() {
     if (CanPerformImpl()) {
         PerformImpl();
+        return true;
     }
+
+    return false;
 }
 void UAct::PerformDeferred(EActTickFlags TickFlag) {
 
@@ -233,7 +236,7 @@ void UAct::SetEnabled(bool bNewEnabled) {
     OnEnableChangedBP.Broadcast(this, IsEnabled());
     OnEnableChanged.Broadcast(this, IsEnabled());
 }
-bool UAct::DidPerform(EActTickFlags TickFlag) const {
+bool UAct::DidPerformInTick(EActTickFlags TickFlag) const {
 
     // Return false if no flag provided
     if (TickFlag == EActTickFlags::None) {

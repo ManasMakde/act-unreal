@@ -213,7 +213,7 @@ class ACTDEMO_API UAct : public UObject {
     void Deinit();
 
     UFUNCTION(BlueprintCallable, Category = "Act")
-    void Perform();
+    bool Perform();
 
     UFUNCTION(BlueprintCallable, Category = "Act")
     void PerformDeferred(EActTickFlags TickFlag = EActTickFlags::Tick);
@@ -234,7 +234,7 @@ class ACTDEMO_API UAct : public UObject {
     void SetEnabled(bool bNewEnabled);
 
     UFUNCTION(BlueprintPure, Category = "Act")
-    bool DidPerform(EActTickFlags TickFlag = EActTickFlags::Tick) const;
+    bool DidPerformInTick(EActTickFlags TickFlag = EActTickFlags::Tick) const;
 
     UFUNCTION(BlueprintPure, Category = "Act")
     bool HasInitialized() const;

@@ -45,14 +45,14 @@
 |--------|------|--------------|
 | public | void | [Init](#init)(FString NewName, UTheater* NewTheater, bool bIsInitiallyEnabled) |
 | public | void | [Deinit](#deinit)() |
-| public | void | [Perform](#perform)() |
+| public | bool | [Perform](#perform)() |
 | public | void | [PerformDeferred](#performdeferred)([EActTickFlags](#eacttickflags) TickFlag) |
 | public | void | [Retry](#retry)() |
 | public | void | [Abort](#abort)() |
 | public | void | [AddToBlock](#addtoblock)(TArray\<UAct*\> Acts, [EActBlockType](#eactblocktype) BlockType) |
 | public | void | [RemoveFromBlock](#removefromblock)(TArray\<UAct*\> Acts) |
 | public | void | [SetEnabled](#setenabled)(bool bNewEnabled) |
-| public const | bool | [DidPerform](#didperform)([EActTickFlags](#eacttickflags) TickFlag) |
+| public const | bool | [DidPerformInTick](#didperformintick)([EActTickFlags](#eacttickflags) TickFlag) |
 | public const | bool | [HasInitialized](#hasinitialized)() |
 | public const | bool | [IsInitializing](#isinitializing)() |
 | public const | bool | [IsOngoing](#isongoing)() |
@@ -71,6 +71,7 @@
 | public const | float | [GetDelta](#getdelta)() |
 | public const | FString | [GetName](#getname)() |
 | public static | TArray\<UAct*\> | [Seq](#seq)(TArray\<TArray\<UAct*\>\> PArrays) |
+| public static | TArray\<UAct*\> | [SeqBP](#seq)(TArray\<FActArray\> PArrays) |
 | protected<br>BlueprintNativeEvent | void | [Setup](#setup)() <abbr title="">Virtual</abbr> |
 | protected<br>BlueprintNativeEvent | bool | [CanPerform](#canperform)() <abbr title="">Virtual</abbr> |
 | protected<br>BlueprintNativeEvent | [EActOutcome](#eactoutcome) | [Enter](#enter)() <abbr title="">Virtual</abbr> |
@@ -431,8 +432,10 @@ Calling `Deinit()` will internally call your overridden `Cleanup()` method.
 ---
 
 
-### <a id="perform"></a> public void Perform()
-Call this method when you want your defined act behaviour to run. This will start the perform lifecycle of the act.
+### <a id="perform"></a> public bool Perform()
+Call this method when you want your defined act behaviour to run. This will start the perform lifecycle of the act. Returns `false` if act could not perform.
+
+
 ```cpp
 void AMyPawn::Tick(float DeltaTime)
 {
@@ -509,16 +512,16 @@ MyAct->SetEnabled(true);  // Enable act
 ---
 
 
-### <a id="didperform"></a> public bool DidPerform([EActTickFlags](#eacttickflags) TickFlag = EActTickFlags::Tick) const
+### <a id="didperformintick"></a> public bool DidPerformInTick([EActTickFlags](#eacttickflags) TickFlag = EActTickFlags::Tick) const
 Returns `true` if the act has performed atleast once in the span of the current tick.
 ```cpp
 void AMyPawn::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    UE_LOG(LogTemp, Log, TEXT("%d"), MyAct->DidPerform(EActTickFlags::Tick));  // false
+    UE_LOG(LogTemp, Log, TEXT("%d"), MyAct->DidPerformInTick(EActTickFlags::Tick));  // false
     MyAct->Perform();
-    UE_LOG(LogTemp, Log, TEXT("%d"), MyAct->DidPerform(EActTickFlags::Tick));  // true
+    UE_LOG(LogTemp, Log, TEXT("%d"), MyAct->DidPerformInTick(EActTickFlags::Tick));  // true
 }
 ```
 
@@ -616,7 +619,6 @@ Returns the current [EActStatus](#eactstatus) of the act.
 
 ### <a id="getoutcome"></a> public EActOutcome GetOutcome() const
 Returns the outcome of [Enter](#enter)() or [`Tick()`](#tick).  
-However this is only to be used inside the lifecycle methods since [`Exit()`](#exit) will internally reset the flag.
 
 
 ---
@@ -687,7 +689,7 @@ MyActB2->Prologue = [](UAct* Act) {
 };
 ```
 
-> **Note:** Use `SeqBP()` in Blueprints
+> **Note:** Use `SeqBP()` in Blueprints, Which takes an array of `FActArray` instead of a raw nested array.
 
 
 ---
