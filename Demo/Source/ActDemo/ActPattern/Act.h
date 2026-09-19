@@ -88,6 +88,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnActBP, UAct*, Act);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAct, UAct* /* Act */);
 
 UDELEGATE()
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPerformReqBP, UAct*, Act, bool, bWillPerform);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnPerformReq, UAct* /* Act */, bool /* bWillPerform */);
+
+UDELEGATE()
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPrologueCompleteBP, UAct*, Act, UAct*, PrologueAct, EActOutcome, Outcome);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnPrologueComplete, UAct* /* Act */, UAct* /* PrologueAct */, EActOutcome /* Outcome */);
 
@@ -124,6 +128,12 @@ class ACTDEMO_API UAct : public UObject {
 
     UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPostSetupBP;
+
+    UPROPERTY(BlueprintAssignable, Category = "Act")
+    FOnActBP OnPrePerformReqBP;
+
+    UPROPERTY(BlueprintAssignable, Category = "Act")
+    FOnPerformReqBP OnPostPerformReqBP;
 
     UPROPERTY(BlueprintAssignable, Category = "Act")
     FOnActBP OnPerformStartBP;
@@ -172,6 +182,8 @@ class ACTDEMO_API UAct : public UObject {
 
     FOnAct OnPreSetup;
     FOnAct OnPostSetup;
+    FOnAct OnPrePerformReq;
+    FOnPerformReq OnPostPerformReq;
     FOnAct OnPerformStart;
     FOnAct OnPrePrologue;
     FOnPrologueComplete OnPrologueComplete;
@@ -241,6 +253,9 @@ class ACTDEMO_API UAct : public UObject {
 
     UFUNCTION(BlueprintPure, Category = "Act")
     bool IsInitializing() const;
+
+    UFUNCTION(BlueprintPure, Category = "Act")
+    bool IsRetrying() const;
 
     UFUNCTION(BlueprintPure, Category = "Act")
     bool IsOngoing() const;
@@ -373,6 +388,9 @@ class ACTDEMO_API UAct : public UObject {
     TSet<UAct*> PendingEpilogueActs;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    TSet<UAct*> ContinueEpilogueActs;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     TSet<UAct*> PrologueActs;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
@@ -392,6 +410,9 @@ class ACTDEMO_API UAct : public UObject {
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     bool bIsInitializing = false;
+
+    UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
+    bool bIsRetrying = false;
 
     UPROPERTY(VisibleAnywhere, Category = "Act", meta = (AllowPrivateAccess = "true"))
     bool bHasPrecomputedPrologues = false;
@@ -414,13 +435,13 @@ class ACTDEMO_API UAct : public UObject {
     static TSet<UAct*> GetTopEpilogues(UAct* OfAct, TSet<UAct*>& Result, TSet<UAct*>& Visited);
     static void PrecomputePrologueChain(UAct* OfAct);
     static void FinishPrologues(UAct* OfAct, EActOutcome NewOutcome);
-    static void ContinueEpilogues(UAct* OfAct, EActOutcome NewOutcome);
+    static void ContinueEpilogues(UAct* OfAct, TSet<UAct*>& PendingEpilogueActs, EActOutcome NewOutcome);
     static void ClearPrologueChain(UAct* OfAct);
     static UAct* GetFirst(const TSet<UAct*>& Data);
 	static bool DoesOverlap(const TSet<UAct*>& A, const TSet<UAct*>& B);
 
     bool CanPerformImpl(bool bIsRetrying = false);
-    void PerformImpl();
+    bool PerformImpl(bool bIsRetrying = false);
     void PrologueImpl();
     void CompletedPrologue(UAct* PAct, EActOutcome NewOutcome);
     void EnterImpl();

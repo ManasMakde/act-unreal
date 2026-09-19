@@ -14,6 +14,8 @@
 |--------------|-------|
 | \<UAct* Act\> | [OnPreSetup](#onpresetup) |
 | \<UAct* Act\> | [OnPostSetup](#onpostsetup) |
+| \<UAct* Act\> | [OnPrePerformReq](#onpreperformreq) |
+| \<UAct* Act,<br> bool bWillPerform\> | [OnPostPerformReq](#onpostperformreq) |
 | \<UAct* Act\> | [OnPerformStart](#onperformstartact) |
 | \<UAct* Act\> | [OnPrePrologue](#onpreprologue) |
 | \<UAct* Act,<br> UAct* PrologueAct,<br> [EActOutcome](#eactoutcome) Outcome\> | [OnPrologueComplete](#onprologuecomplete) |
@@ -55,6 +57,7 @@
 | public const | bool | [DidPerformInTick](#didperformintick)([EActTickFlags](#eacttickflags) TickFlag) |
 | public const | bool | [HasInitialized](#hasinitialized)() |
 | public const | bool | [IsInitializing](#isinitializing)() |
+| public const | bool | [IsRetrying](#isretrying)() |
 | public const | bool | [IsOngoing](#isongoing)() |
 | public const | bool | [IsActive](#isactive)() |
 | public const | bool | [IsEnabled](#isenabled)() |
@@ -164,6 +167,25 @@ Invoked just before [Setup](#setup)() method is called.
 Invoked just after [Setup](#setup)() method has been called.
 
 > **Note:** Use `OnPostSetupBP` in Blueprints
+
+
+---
+
+
+### <a id="onpreperformreq"></a> public \<UAct* Act\> OnPrePerformReq
+Invoked whenever a perform is requested, before checking if the act can perform.
+
+> **Note:** Use `OnPrePerformReqBP` in Blueprints
+
+
+---
+
+
+### <a id="onpostperformreq"></a> public \<UAct* Act, bool bWillPerform\> OnPostPerformReq
+Invoked whenever a perform is requested, after checking if the act can perform.  
+`bWillPerform` is `true` if the perform condition is met.
+
+> **Note:** Use `OnPostPerformReqBP` in Blueprints
 
 
 ---
@@ -540,6 +562,13 @@ Returns `true` if the act has been [initialized](#init). Resets to `false` once 
 
 ### <a id="isinitializing"></a> public bool IsInitializing() const
 Returns `true` if the act is currently in between [`Init()`](#init) or [`Deinit()`](#deinit).
+
+
+---
+
+
+### <a id="isretrying"></a> public bool IsRetrying() const
+Returns `true` if the act is currently performing due to a retry.
 
 
 ---

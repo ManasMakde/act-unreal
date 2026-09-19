@@ -138,12 +138,7 @@ void UAct::Deinit() {
     OnPostCleanup.Broadcast(this);
 }
 bool UAct::Perform() {
-    if (CanPerformImpl()) {
-        PerformImpl();
-        return true;
-    }
-
-    return false;
+    return PerformImpl();
 }
 void UAct::PerformDeferred(EActTickFlags TickFlag) {
 
@@ -181,7 +176,7 @@ void UAct::AddToBlock(TArray<UAct*> Acts, EActBlockType BlockType) {
 
         // Skip if self (reserved for enable/disable) or null
         if (BAct == this || BAct == nullptr) {
-            WriteLog("Trying to block self!");
+            WriteLog("Trying to block self or another invalid act!");
             continue;
         }
 
@@ -202,7 +197,7 @@ void UAct::RemoveFromBlock(TArray<UAct*> Acts) {
 
         // Skip if self (reserved for enable/disable) or null
         if (BAct == this || BAct == nullptr) {
-            WriteLog("Trying to unblock self!");
+            WriteLog("Trying to unblock self or another invalid act!");
             continue;
         }
 
@@ -257,6 +252,9 @@ bool UAct::HasInitialized() const {
 }
 bool UAct::IsInitializing() const {
     return bIsInitializing;
+}
+bool UAct::IsRetrying() const {
+    return bIsRetrying;
 }
 bool UAct::IsOngoing() const {
     return Status != EActStatus::None;
@@ -557,12 +555,12 @@ void UAct::FinishPrologues(UAct* OfAct, EActOutcome NewOutcome) {
         }
     }
 }
-void UAct::ContinueEpilogues(UAct* OfAct, EActOutcome NewOutcome) {
+void UAct::ContinueEpilogues(UAct* OfAct, TSet<UAct*>& PendingEpilogueActs, EActOutcome NewOutcome) {
 
     // Continue and clear out epilogues
-    while (OfAct->PendingEpilogueActs.Num() != 0) {
-        UAct* EAct = GetFirst(OfAct->PendingEpilogueActs);
-        OfAct->PendingEpilogueActs.Remove(EAct);
+    while (PendingEpilogueActs.Num() != 0) {
+        UAct* EAct = GetFirst(PendingEpilogueActs);
+        PendingEpilogueActs.Remove(EAct);
         EAct->CompletedPrologueActs.Add(OfAct);
         EAct->CompletedPrologue(OfAct, NewOutcome);
     }
@@ -621,7 +619,7 @@ bool UAct::DoesOverlap(const TSet<UAct*>& A, const TSet<UAct*>& B) {
 
     return false;
 }
-bool UAct::CanPerformImpl(bool bIsRetrying) {
+bool UAct::CanPerformImpl(bool bNewIsRetrying) {
 
     // Return if in between initialization
     if (bIsInitializing) {
@@ -631,7 +629,7 @@ bool UAct::CanPerformImpl(bool bIsRetrying) {
 
 
     // Return if exiting
-    if (!bIsRetrying && Status == EActStatus::Exiting) {
+    if (!bNewIsRetrying && Status == EActStatus::Exiting) {
         WriteLog("Cannot perform, act is between exiting!");
         return false;
     }
@@ -652,7 +650,7 @@ bool UAct::CanPerformImpl(bool bIsRetrying) {
 
 
     // Return if already ongoing
-    if (!bIsRetrying && !bCanReperform && IsOngoing()) {
+    if (!bNewIsRetrying && !bCanReperform && IsOngoing()) {
         WriteLog("Cannot perform, act is ongoing!");
         return false;
     }
@@ -672,7 +670,31 @@ bool UAct::CanPerformImpl(bool bIsRetrying) {
 
     return CanPerform();
 }
-void UAct::PerformImpl() {
+bool UAct::PerformImpl(bool bNewIsRetrying) {
+
+    // Store retrying status
+    this->bIsRetrying = bNewIsRetrying;
+
+
+    // Broadcast pre perform requested
+    OnPrePerformReqBP.Broadcast(this);
+    OnPrePerformReq.Broadcast(this);
+
+
+    // Check perform condition
+    bool bWillPerform = CanPerformImpl(bNewIsRetrying);
+
+
+    // Broadcast post perform requested
+    OnPostPerformReqBP.Broadcast(this, bWillPerform);
+    OnPostPerformReq.Broadcast(this, bWillPerform);
+
+
+    // Return if perform condition failed
+    if (!bWillPerform) {
+        return false;
+    }
+
 
     // Finish any ongoing perform
     if (Status != EActStatus::None) {
@@ -693,6 +715,9 @@ void UAct::PerformImpl() {
 
     // Start prologuing
     Redirect(EActStatus::Prologuing);
+
+
+    return true;
 }
 void UAct::PrologueImpl() {
 
@@ -768,18 +793,23 @@ void UAct::PrologueImpl() {
         }
 
 
+        // Mark prologue as pending
+        PrologueActs.Remove(PAct);
+        PendingPrologueActs.Add(PAct);
+
+
         // Perform prologue
-        if (PAct->CanPerformImpl()) {
-            PrologueActs.Remove(PAct);
-            PendingPrologueActs.Add(PAct);
-            PAct->PerformImpl();
-            continue;
+        if (!PAct->PerformImpl()) {
+
+            // Revert pending
+            PendingPrologueActs.Remove(PAct);
+            PrologueActs.Add(PAct);
+
+
+            // Exit with failure if failed to perform prologue
+            Redirect(EActStatus::Exiting, EActOutcome::Failure);
+            return;
         }
-
-
-        // Exit with failure if failed to perform
-        Redirect(EActStatus::Exiting, EActOutcome::Failure);
-        return;
     }
 }
 void UAct::CompletedPrologue(UAct* PAct, EActOutcome NewOutcome) {
@@ -788,7 +818,7 @@ void UAct::CompletedPrologue(UAct* PAct, EActOutcome NewOutcome) {
     UE_STATUS_SAFEGUARD(Status, EActStatus::Prologuing);
 
 
-    // Remove from pending and move to completed
+    // Remove from pending
     PendingPrologueActs.Remove(PAct);
 
 
@@ -956,34 +986,44 @@ void UAct::ExitImpl() {
     // Cleanup prologues
     FinishPrologues(this, Outcome);
     ClearPrologueChain(this);
-    bHasPrecomputedPrologues = false;
+    EpilogueActs.Empty();
     PrologueActs.Empty();
     PendingPrologueActs.Empty();
     CompletedPrologueActs.Empty();
+    bHasPrecomputedPrologues = false;
 
 
     // Retry
     if (Outcome == EActOutcome::Retry) {
-        if (CanPerformImpl(true)) {
-            Status = EActStatus::None;
-            PerformImpl();
+
+        // Reset status
+        Status = EActStatus::None;
+
+
+        // Retry performing
+        if (PerformImpl(true)) {
             return;
         }
 
-        // Change outcome to failure since could not retry
+
+        // Revert status & Change outcome to failure since could not retry
+        Status = EActStatus::Exiting;
         Outcome = EActOutcome::Failure;
     }
 
 
-    // Unblock & Continue Epilogues
+    // Unblock
     UnblockOthers();
-    ContinueEpilogues(this, Outcome);
-    EpilogueActs.Empty();
-    PendingEpilogueActs.Empty();
+
+
+    // Prerequisites for epilogue
+    EActOutcome EpilogueOutcome = Outcome;
+    Swap(PendingEpilogueActs, ContinueEpilogueActs);
 
 
     // Reset status
     Status = EActStatus::None;
+    bIsRetrying = false;
 
 
     // Let theater know this act has ended
@@ -995,6 +1035,10 @@ void UAct::ExitImpl() {
     // Broadcast perform end
     OnPerformEndBP.Broadcast(this);
     OnPerformEnd.Broadcast(this);
+
+
+    // Continue epilogues
+    ContinueEpilogues(this, ContinueEpilogueActs, EpilogueOutcome);
 }
 void UAct::Redirect(EActStatus NewStatus, EActOutcome NewOutcome) {
 
